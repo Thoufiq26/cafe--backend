@@ -45,8 +45,9 @@ const upload = multer({
 });
 
 // MongoDB Atlas Connection
-mongoose.connect('mongodb+srv://thoufiqaa11:DMUABdQzHH5QXQu9@cluster0.bcvmx5y.mongodb.net/friendscafe?retryWrites=true&w=majority&appName=Cluster0', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://thoufiqaa11:DMUABdQzHH5QXQu9@cluster0.bcvmx5y.mongodb.net/friendscafe?retryWrites=true&w=majority&appName=Cluster0', {
   serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
 })
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error('MongoDB connection error:', err));
@@ -109,7 +110,9 @@ const shopStatusSchema = new mongoose.Schema({
 const ShopStatus = mongoose.model('ShopStatus', shopStatusSchema);
 
 // Twilio Setup
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID,process.env.TWILIO_AUTH_TOKEN);
+console.log('Twilio SID:', process.env.TWILIO_ACCOUNT_SID);
+console.log('Twilio Token:', process.env.TWILIO_AUTH_TOKEN);
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 // API Routes
 app.post('/api/admin/login', async (req, res) => {
@@ -123,7 +126,7 @@ app.post('/api/admin/login', async (req, res) => {
     }
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });
 
@@ -134,7 +137,7 @@ app.get('/api/menu', async (req, res) => {
     res.json(items);
   } catch (error) {
     console.error('Menu fetch error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -154,7 +157,7 @@ app.post('/api/menu', upload.single('image'), async (req, res) => {
     res.json(item);
   } catch (error) {
     console.error('Menu add error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -168,7 +171,7 @@ app.put('/api/menu/:id', async (req, res) => {
     res.json(item);
   } catch (error) {
     console.error('Menu update error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -188,11 +191,9 @@ app.delete('/api/menu/:id', async (req, res) => {
     res.json({ message: 'Item deleted' });
   } catch (error) {
     console.error('Menu delete error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
-});
-
-app.post('/api/orders', async (req, res) => {
+});app.post('/api/orders', async (req, res) => {
   try {
     const { items, name, phone, collectionTime, collectionDate } = req.body;
 
@@ -204,6 +205,9 @@ app.post('/api/orders', async (req, res) => {
     let message = `New Order from ${name} (${phone}) for collection on ${collectionDate} at ${collectionTime}:\n`;
 
     for (const orderItem of items) {
+      if (!orderItem.itemId || !mongoose.Types.ObjectId.isValid(orderItem.itemId)) {
+        return res.status(400).json({ message: `Invalid itemId: ${orderItem.itemId}` });
+      }
       const item = await MenuItem.findById(orderItem.itemId);
       if (!item) {
         return res.status(404).json({ message: `Item not found: ${orderItem.itemId}` });
@@ -223,16 +227,21 @@ app.post('/api/orders', async (req, res) => {
 
     await Order.insertMany(orders);
 
-    await twilioClient.messages.create({
-      body: message,
-      from: 'whatsapp:+14155238886',
-      to: 'whatsapp:+919440733910',
-    });
+    try {
+      await twilioClient.messages.create({
+        body: message,
+        from: 'whatsapp:+14155238886',
+        to: 'whatsapp:+919440733910',
+      });
+    } catch (twilioError) {
+      console.error('Twilio error:', twilioError);
+      // Continue despite Twilio failure
+    }
 
     res.json({ message: 'Order placed successfully', orders });
   } catch (error) {
     console.error('Order error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: 'Server error', error: error.message || error });
   }
 });
 
@@ -242,7 +251,7 @@ app.get('/api/orders', async (req, res) => {
     res.json(orders);
   } catch (error) {
     console.error('Orders fetch error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -252,7 +261,7 @@ app.get('/api/ratings', async (req, res) => {
     res.json(ratings);
   } catch (error) {
     console.error('Ratings fetch error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -263,7 +272,7 @@ app.post('/api/ratings', async (req, res) => {
     res.json(rating);
   } catch (error) {
     console.error('Rating add error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -283,7 +292,7 @@ app.get('/api/shop-status', async (req, res) => {
     res.json(status);
   } catch (error) {
     console.error('Shop status error:', error);
-    res.status(500).json({ message: 'Error getting shop status' });
+    res.status(500).json({ message: 'Error getting shop status', error: error.message });
   }
 });
 
@@ -297,7 +306,7 @@ app.put('/api/shop-status', async (req, res) => {
     res.json(updatedStatus);
   } catch (error) {
     console.error('Shop status update error:', error);
-    res.status(500).json({ message: 'Error updating shop status' });
+    res.status(500).json({ message: 'Error updating shop status', error: error.message });
   }
 });
 
@@ -311,7 +320,7 @@ app.put('/api/orders/:id', async (req, res) => {
     res.json(order);
   } catch (error) {
     console.error('Order update error:', error);
-    res.status(500).json({ message: 'Error updating order' });
+    res.status(500).json({ message: 'Error updating order', error: error.message });
   }
 });
 
