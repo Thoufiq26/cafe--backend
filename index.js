@@ -5,6 +5,7 @@ const twilio = require('twilio');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config();
 
 const app = express();
 
@@ -108,7 +109,7 @@ const shopStatusSchema = new mongoose.Schema({
 const ShopStatus = mongoose.model('ShopStatus', shopStatusSchema);
 
 // Twilio Setup
-const twilioClient = twilio('AC38d0f878ea45064847c0dc2624a9d859', 'a473a07697838ab21be9d755bb8ddec2');
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID,process.env.TWILIO_AUTH_TOKEN);
 
 // API Routes
 app.post('/api/admin/login', async (req, res) => {
